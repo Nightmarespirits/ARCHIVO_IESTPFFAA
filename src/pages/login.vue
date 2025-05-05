@@ -82,11 +82,15 @@ async function handleLogin() {
     return;
   }
   loading.value = true;
+  error.value = null; // Limpia errores anteriores
+  
   try {
     await authStore.login({ 
       username: username.value, 
       password: password.value 
     });
+    
+    // La redirección se maneja dentro del store
   } catch (err) {
     // Aquí puedes mostrar un error general si lo deseas
     setTimeout(() => {

@@ -52,6 +52,10 @@ export const useDocumentsStore = defineStore('documents', () => {
     return tags.value;
   }
 
+  function getDocumentDownloadUrl(id) {
+    return `${API_BASE_URL}/documents/download/${id}`;
+  }
+
   // Actions
   async function fetchDocuments() {
     try {
@@ -62,10 +66,20 @@ export const useDocumentsStore = defineStore('documents', () => {
 
       if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
       
-      const data = await response.json();
-      documents.value = data;
+      const responseText = await response.text();
+      console.log('Raw API Response:', responseText);
+      
+      try {
+        const data = JSON.parse(responseText);
+        documents.value = data;
+      } catch (jsonError) {
+        console.error('JSON Parse Error:', jsonError);
+        console.error('Invalid JSON Response:', responseText);
+        throw new Error('Error al procesar la respuesta del servidor: Formato inválido');
+      }
     } catch (err) {
       error.value = err.message;
+      console.error('fetchDocuments Error:', err);
       throw err;
     } finally {
       loading.value = false;
@@ -226,26 +240,35 @@ export const useDocumentsStore = defineStore('documents', () => {
   async function downloadDocument(id) {
     try {
       loading.value = true;
-      const document = await fetchDocumentById(id);
       
-      const response = await fetch(`${API_BASE_URL}/documents/${id}/download`, {
-        headers: getAuthHeaders()
+      // Primero obtener los datos del documento si no están disponibles
+      let documentData = currentDocument.value;
+      if (!documentData || documentData.id !== id) {
+        await fetchDocumentById(id);
+        documentData = currentDocument.value;
+      }
+      
+      const headers = getAuthHeaders(false);
+      const response = await fetch(`${import.meta.env.VITE_BASE_URL}/documents/download/${id}`, { 
+        method: 'GET',
+        headers
       });
 
       if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
       
-      // Registrar la actividad
+      // Registrar la actividad de descarga
       await activityLogsStore.createActivityLog(
         'DOWNLOAD_DOCUMENT',
-        `Documento "${document.title}" descargado`,
+        `Documento "${documentData.title}" descargado`,
         id
       );
-
+      
+      // Procesar la descarga del archivo
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = document.fileName || 'documento';
+      a.download = documentData.title || 'documento';
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -292,10 +315,10 @@ export const useDocumentsStore = defineStore('documents', () => {
     // State
     documents,
     currentDocument,
-    loading,
-    error,
     documentTypes,
     tags,
+    loading,
+    error,
 
     // Getters
     getDocuments,
@@ -304,6 +327,7 @@ export const useDocumentsStore = defineStore('documents', () => {
     getError,
     getDocumentTypes,
     getTags,
+    getDocumentDownloadUrl,
 
     // Actions
     fetchDocuments,
